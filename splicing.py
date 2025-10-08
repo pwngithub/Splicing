@@ -208,17 +208,18 @@ def main():
             
             # --- Breakdown Table and Chart ---
             if all([project_column in prod_df.columns, technician_column in prod_df.columns]):
-                st.subheader("Production Breakdown")
+                st.subheader("Production Breakdown (Project & Technician)")
                 summary_df = prod_df.groupby([project_column, technician_column])[splicing_hours_column].sum().reset_index()
                 summary_df.rename(columns={splicing_hours_column: 'Total Splicing Hours'}, inplace=True)
                 summary_df['Total Production Pay ($)'] = summary_df['Total Splicing Hours'] * pay_rate
-                summary_df['Total Splicing Hours'] = summary_df['Total Splicing Hours'].map('{:,.2f}'.format)
-                summary_df['Total Production Pay ($)'] = summary_df['Total Production Pay ($)'].map('${:,.2f}'.format)
                 
                 # Display table and chart side-by-side
                 viz_col1, viz_col2 = st.columns(2)
                 with viz_col1:
-                    st.dataframe(summary_df)
+                    st.dataframe(summary_df.style.format({
+                        'Total Splicing Hours': '{:,.2f}',
+                        'Total Production Pay ($)': '${:,.2f}'
+                    }))
 
                 with viz_col2:
                     # Use unformatted data for charting
@@ -234,6 +235,54 @@ def main():
                         barmode='group'
                     )
                     st.plotly_chart(fig_prod, use_container_width=True)
+
+                st.markdown("<hr>", unsafe_allow_html=True)
+
+                # --- Splicing by Technician ---
+                st.subheader("Splicing Analysis by Technician")
+                tech_summary_df = prod_df.groupby(technician_column)[splicing_hours_column].sum().reset_index()
+                tech_summary_df.rename(columns={splicing_hours_column: 'Total Splicing Hours'}, inplace=True)
+                tech_summary_df['Total Production Pay ($)'] = tech_summary_df['Total Splicing Hours'] * pay_rate
+                tech_summary_df = tech_summary_df.sort_values(by='Total Splicing Hours', ascending=False)
+
+                tech_col1, tech_col2 = st.columns(2)
+                with tech_col1:
+                    st.dataframe(tech_summary_df.style.format({
+                        'Total Splicing Hours': '{:,.2f}',
+                        'Total Production Pay ($)': '${:,.2f}'
+                    }))
+                with tech_col2:
+                    fig_tech = px.pie(
+                        tech_summary_df,
+                        names=technician_column,
+                        values='Total Splicing Hours',
+                        title='Splicing Hours Distribution by Technician'
+                    )
+                    st.plotly_chart(fig_tech, use_container_width=True)
+
+                # --- Splicing by Project ---
+                st.subheader("Splicing Analysis by Project")
+                project_summary_df = prod_df.groupby(project_column)[splicing_hours_column].sum().reset_index()
+                project_summary_df.rename(columns={splicing_hours_column: 'Total Splicing Hours'}, inplace=True)
+                project_summary_df['Total Production Pay ($)'] = project_summary_df['Total Splicing Hours'] * pay_rate
+                project_summary_df = project_summary_df.sort_values(by='Total Splicing Hours', ascending=False)
+                
+                proj_col1, proj_col2 = st.columns(2)
+                with proj_col1:
+                    st.dataframe(project_summary_df.style.format({
+                        'Total Splicing Hours': '{:,.2f}',
+                        'Total Production Pay ($)': '${:,.2f}'
+                    }))
+                with proj_col2:
+                    fig_proj = px.bar(
+                        project_summary_df,
+                        x=project_column,
+                        y='Total Splicing Hours',
+                        color=project_column,
+                        title='Total Splicing Hours by Project'
+                    )
+                    st.plotly_chart(fig_proj, use_container_width=True)
+
             else:
                 st.info(f"Ensure your form has '{project_column}' and '{technician_column}' fields for a detailed breakdown.")
         else:
