@@ -4,6 +4,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import json
 
 # --- Jotform API Configuration ---
 # WARNING: It's best practice to use Streamlit secrets for sensitive data like API keys.
@@ -85,7 +86,7 @@ def process_submissions_to_dataframe(submissions):
 
 def parse_and_analyze_closures(df, column_name, project_col, tech_col):
     """
-    Parses the 'Closures/Panels' field and creates a new analysis section.
+    Parses the 'Closures/Panels' field (in JSON format) and creates a new analysis section.
     """
     if column_name not in df.columns:
         st.warning(f"Could not find a '{column_name}' field in your form. Detailed closure analysis cannot be performed.")
@@ -93,10 +94,9 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
 
     st.header("Closures & Panels Analysis")
     st.info("""
-    **Note:** This analysis assumes each entry in the 'Closures/Panels' field is on a new line and follows this key-value pair format:
-    `Closure Type: [Type], Closure Name: [Name], Splice Type: [Splice Type], Splice Count: [Count], Fiber Type: [Fiber Type], Max Cable Size: [Size]`
+    **Note:** This analysis assumes the 'Closures/Panels' field contains a JSON array of objects.
     
-    **Example:** `Closure Type: FAT, Closure Name: S0X, Splice Type: End Cut, Splice Count: 4, Fiber Type: Loose Tube, Max Cable Size: 24`
+    **Example:** `[{"Closure Type":"FAT", "Closure Name":"S0X", ...}, {"Closure Type":"SC", ...}]`
     """)
 
     parsed_entries = []
@@ -109,20 +109,16 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
         if pd.isna(entries_str) or not str(entries_str).strip():
             continue
 
-        lines = str(entries_str).strip().split('\n')
-        for line in lines:
-            try:
-                # Parse the key-value pair format
-                parts = [p.strip() for p in line.split(',')]
-                entry_dict = {}
-                for part in parts:
-                    key_value = part.split(':', 1)
-                    if len(key_value) == 2:
-                        key = key_value[0].strip()
-                        value = key_value[1].strip()
-                        entry_dict[key] = value
+        try:
+            # Load the string as a JSON object (a list of dictionaries)
+            json_data = json.loads(entries_str)
+            
+            # Ensure it's a list before iterating
+            if not isinstance(json_data, list):
+                continue
 
-                # Check if all required keys are present
+            for entry_dict in json_data:
+                # Check if all required keys are present in the dictionary
                 required_keys = ['Closure Type', 'Closure Name', 'Splice Type', 'Splice Count', 'Fiber Type', 'Max Cable Size']
                 if all(key in entry_dict for key in required_keys):
                     parsed_entries.append({
@@ -136,64 +132,12 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
                         'Fiber Type': entry_dict.get('Fiber Type'),
                         'Max Cable Size': entry_dict.get('Max Cable Size')
                     })
-            except (ValueError, IndexError):
-                # Silently skip malformed lines for now.
-                pass
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Silently skip entries that are not valid JSON or have incorrect types
+            pass
 
     if not parsed_entries:
-        st.warning("No valid 'Closures/Panels' entries could be parsed from the filtered data. Please check the format.")
-        
-        # --- Add debugging information ---
-        st.subheader("Parsing Debug Information")
-        st.write("The script could not find all the required keys in the 'Closures/Panels' data. Here is a sample of what was parsed from the first entry it found. Compare the 'Parsed Keys' with the 'Required Keys' to identify any mismatches.")
-
-        debug_info_displayed = False
-        # Find the first row with data to debug
-        for _, row in df.iterrows():
-            entries_str = row[column_name]
-            if pd.notna(entries_str) and str(entries_str).strip():
-                lines = str(entries_str).strip().split('\n')
-                if lines:
-                    first_line = lines[0]
-                    st.write("**Original Data from First Line:**")
-                    st.code(first_line)
-
-                    parts = [p.strip() for p in first_line.split(',')]
-                    entry_dict = {}
-                    for part in parts:
-                        key_value = part.split(':', 1)
-                        if len(key_value) == 2:
-                            key = key_value[0].strip()
-                            value = key_value[1].strip()
-                            entry_dict[key] = value
-                    
-                    st.write("**Parsed Dictionary:**")
-                    st.json(entry_dict)
-
-                    st.write("**Parsed Keys vs. Required Keys:**")
-                    parsed_keys = list(entry_dict.keys())
-                    required_keys = ['Closure Type', 'Closure Name', 'Splice Type', 'Splice Count', 'Fiber Type', 'Max Cable Size']
-                    
-                    # Create a comparison DataFrame
-                    comparison_data = []
-                    all_keys = sorted(list(set(required_keys + parsed_keys)))
-                    for key in all_keys:
-                        comparison_data.append({
-                            "Key Name": key,
-                            "Is Required": key in required_keys,
-                            "Was Found": key in parsed_keys
-                        })
-                    
-                    comparison_df = pd.DataFrame(comparison_data)
-                    st.table(comparison_df)
-
-                    debug_info_displayed = True
-                    break # Only show debug info for the very first entry
-        
-        if not debug_info_displayed:
-            st.write("Could not find any data in the 'Closures/Panels' column to debug.")
-        # --- End of debugging information ---
-        
+        st.warning("No valid 'Closures/Panels' entries could be parsed from the filtered data. Please ensure the data is in the correct JSON format.")
         return
 
     closures_df = pd.DataFrame(parsed_entries)
