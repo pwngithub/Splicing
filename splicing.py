@@ -95,7 +95,7 @@ def main():
     # --- Field Name Configuration ---
     # IMPORTANT: Adjust these variable values if your Jotform field names are different.
     # Check the "Detected form fields" message below to find the correct names.
-    project_column = 'Project'
+    project_column = 'Project '
     technician_column = 'Technician Name'
     splicing_hours_column = 'Splicing Hours'
     pay_rate = 25.00
