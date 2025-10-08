@@ -13,7 +13,7 @@ FORM_ID = "251683946561164"
 
 # --- Streamlit Page Setup ---
 st.set_page_config(
-    page_title="Jotform KPI Dashboard",
+    page_title="Pioneer Splicing",
     page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -89,7 +89,7 @@ def main():
     """
     Main function to run the Streamlit app.
     """
-    st.title("📊 Jotform KPI Dashboard")
+    st.title("📊 Pioneer Splicing")
 
     # --- Field Name Configuration ---
     # IMPORTANT: Adjust these variable values if your Jotform field names are different.
