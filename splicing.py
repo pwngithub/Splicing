@@ -93,10 +93,10 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
 
     st.header("Closures & Panels Analysis")
     st.info("""
-    **Note:** This analysis assumes each entry in the 'Closures/Panels' field is on a new line and follows this comma-separated format:
-    `Type (FAT/SC), Name, Splice Type, Splice Count, Fiber Type, Max Cable Size`
+    **Note:** This analysis assumes each entry in the 'Closures/Panels' field is on a new line and follows this key-value pair format:
+    `Closure Type: [Type], Closure Name: [Name], Splice Type: [Splice Type], Splice Count: [Count], Fiber Type: [Fiber Type], Max Cable Size: [Size]`
     
-    **Example:** `FAT, Panel-01, Ribbon, 12, SM, 288`
+    **Example:** `Closure Type: FAT, Closure Name: S0X, Splice Type: End Cut, Splice Count: 4, Fiber Type: Loose Tube, Max Cable Size: 24`
     """)
 
     parsed_entries = []
@@ -112,19 +112,29 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
         lines = str(entries_str).strip().split('\n')
         for line in lines:
             try:
-                # Assumption: parts are comma-separated
+                # Parse the key-value pair format
                 parts = [p.strip() for p in line.split(',')]
-                if len(parts) == 6:
+                entry_dict = {}
+                for part in parts:
+                    key_value = part.split(':', 1)
+                    if len(key_value) == 2:
+                        key = key_value[0].strip()
+                        value = key_value[1].strip()
+                        entry_dict[key] = value
+
+                # Check if all required keys are present
+                required_keys = ['Closure Type', 'Closure Name', 'Splice Type', 'Splice Count', 'Fiber Type', 'Max Cable Size']
+                if all(key in entry_dict for key in required_keys):
                     parsed_entries.append({
                         'submission_id': submission_id,
                         'Project': project,
                         'Technician': technician,
-                        'Type': parts[0],
-                        'Name': parts[1],
-                        'Splice Type': parts[2],
-                        'Splice Count': int(parts[3]),
-                        'Fiber Type': parts[4],
-                        'Max Cable Size': parts[5]
+                        'Type': entry_dict.get('Closure Type'),
+                        'Name': entry_dict.get('Closure Name'),
+                        'Splice Type': entry_dict.get('Splice Type'),
+                        'Splice Count': int(entry_dict.get('Splice Count')),
+                        'Fiber Type': entry_dict.get('Fiber Type'),
+                        'Max Cable Size': entry_dict.get('Max Cable Size')
                     })
             except (ValueError, IndexError):
                 # Silently skip malformed lines for now.
