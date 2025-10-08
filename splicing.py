@@ -83,6 +83,95 @@ def process_submissions_to_dataframe(submissions):
     df['submission_date'] = df['created_at'].dt.date
     return df
 
+def parse_and_analyze_closures(df, column_name, project_col, tech_col):
+    """
+    Parses the 'Closures/Panels' field and creates a new analysis section.
+    """
+    if column_name not in df.columns:
+        st.warning(f"Could not find a '{column_name}' field in your form. Detailed closure analysis cannot be performed.")
+        return
+
+    st.header("Closures & Panels Analysis")
+    st.info("""
+    **Note:** This analysis assumes each entry in the 'Closures/Panels' field is on a new line and follows this comma-separated format:
+    `Type (FAT/SC), Name, Splice Type, Splice Count, Fiber Type, Max Cable Size`
+    
+    **Example:** `FAT, Panel-01, Ribbon, 12, SM, 288`
+    """)
+
+    parsed_entries = []
+    for _, row in df.iterrows():
+        submission_id = row['submission_id']
+        project = row.get(project_col, 'N/A')
+        technician = row.get(tech_col, 'N/A')
+        entries_str = row[column_name]
+
+        if pd.isna(entries_str) or not str(entries_str).strip():
+            continue
+
+        lines = str(entries_str).strip().split('\n')
+        for line in lines:
+            try:
+                # Assumption: parts are comma-separated
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) == 6:
+                    parsed_entries.append({
+                        'submission_id': submission_id,
+                        'Project': project,
+                        'Technician': technician,
+                        'Type': parts[0],
+                        'Name': parts[1],
+                        'Splice Type': parts[2],
+                        'Splice Count': int(parts[3]),
+                        'Fiber Type': parts[4],
+                        'Max Cable Size': parts[5]
+                    })
+            except (ValueError, IndexError):
+                # Silently skip malformed lines for now.
+                pass
+
+    if not parsed_entries:
+        st.warning("No valid 'Closures/Panels' entries could be parsed from the filtered data. Please check the format.")
+        return
+
+    closures_df = pd.DataFrame(parsed_entries)
+
+    # --- KPIs for Closures ---
+    total_splices = closures_df['Splice Count'].sum()
+    total_fats = closures_df[closures_df['Type'].str.upper() == 'FAT'].shape[0]
+    total_scs = closures_df[closures_df['Type'].str.upper() == 'SC'].shape[0]
+    
+    kpi_col1, kpi_col2, kpi_col3 = st.columns(3)
+    kpi_col1.metric("Total Splice Count", f"{total_splices:,}")
+    kpi_col2.metric("Total FATs", f"{total_fats:,}")
+    kpi_col3.metric("Total SCs", f"{total_scs:,}")
+
+    # --- Detailed Table and Visualizations ---
+    st.subheader("Detailed Entries")
+    st.dataframe(closures_df)
+
+    viz_col1, viz_col2 = st.columns(2)
+    with viz_col1:
+        splice_type_summary = closures_df.groupby('Splice Type')['Splice Count'].sum().reset_index()
+        fig_splice_type = px.bar(
+            splice_type_summary,
+            x='Splice Type',
+            y='Splice Count',
+            title='Total Splices by Type'
+        )
+        st.plotly_chart(fig_splice_type, use_container_width=True)
+    
+    with viz_col2:
+        closure_type_summary = closures_df['Type'].value_counts().reset_index()
+        closure_type_summary.columns = ['Type', 'Count']
+        fig_closure_type = px.pie(
+            closure_type_summary,
+            names='Type',
+            values='Count',
+            title='Distribution of Closure/Panel Types'
+        )
+        st.plotly_chart(fig_closure_type, use_container_width=True)
+
 
 # --- Streamlit App UI ---
 def main():
@@ -97,6 +186,7 @@ def main():
     project_column = 'Project '
     technician_column = 'Technician Name'
     splicing_hours_column = 'Splicing Hours'
+    closures_panels_column = 'Closures/Panels'
     pay_rate = 25.00
 
     # Fetch and process data
@@ -273,6 +363,10 @@ def main():
         else:
             st.warning(f"Could not find a '{splicing_hours_column}' field in your form. Production analysis cannot be performed.")
 
+        st.markdown("<hr>", unsafe_allow_html=True)
+
+        # --- Closures & Panels Analysis ---
+        parse_and_analyze_closures(filtered_df, closures_panels_column, project_column, technician_column)
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
