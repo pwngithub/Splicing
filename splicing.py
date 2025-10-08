@@ -92,6 +92,13 @@ def main():
     st.title("📊 Jotform KPI Dashboard")
     st.markdown("This dashboard visualizes submissions from the specified Jotform form.")
 
+    # --- Field Name Configuration ---
+    # IMPORTANT: Adjust these variable values if your Jotform field names are different.
+    project_column = 'Project'
+    technician_column = 'Technician Name'
+    splicing_hours_column = 'Splicing Hours'
+    pay_rate = 25.00
+
     # Fetch and process data
     submissions = get_jotform_submissions(API_KEY, FORM_ID)
     
@@ -128,9 +135,7 @@ def main():
              st.sidebar.write("Only one submission date available.")
 
         # --- Filter by Project ---
-        # IMPORTANT: Change 'Project' to the actual name of your project field in Jotform.
         st.sidebar.subheader("Filter by Project")
-        project_column = 'Project' 
         if project_column in filtered_df.columns:
             all_projects = sorted(filtered_df[project_column].unique())
             selected_projects = st.sidebar.multiselect(
@@ -141,12 +146,10 @@ def main():
             if selected_projects:
                 filtered_df = filtered_df[filtered_df[project_column].isin(selected_projects)]
         else:
-            st.sidebar.info(f"Add a '{project_column}' field to your form to enable project filtering.")
+            st.sidebar.warning(f"Could not find a '{project_column}' field in your form.")
 
         # --- Filter by Technician Name ---
-        # IMPORTANT: Change 'Technician Name' to the actual name of your technician field in Jotform.
         st.sidebar.subheader("Filter by Technician")
-        technician_column = 'Technician Name'
         if technician_column in filtered_df.columns:
             all_technicians = sorted(filtered_df[technician_column].unique())
             selected_technicians = st.sidebar.multiselect(
@@ -157,7 +160,7 @@ def main():
             if selected_technicians:
                 filtered_df = filtered_df[filtered_df[technician_column].isin(selected_technicians)]
         else:
-            st.sidebar.info(f"Add a '{technician_column}' field to your form to enable technician filtering.")
+            st.sidebar.warning(f"Could not find a '{technician_column}' field in your form.")
 
 
         # --- Main Dashboard ---
@@ -186,8 +189,61 @@ def main():
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
+        # --- Splicing Hours & Pay Calculation ---
+        st.header("Splicing & Production Analysis")
+        if splicing_hours_column in filtered_df.columns:
+            # Convert hours column to numeric, coercing errors to NaN
+            filtered_df[splicing_hours_column] = pd.to_numeric(filtered_df[splicing_hours_column], errors='coerce')
+            
+            # Drop rows where hours are NaN after conversion
+            prod_df = filtered_df.dropna(subset=[splicing_hours_column])
+
+            # KPIs for Splicing
+            total_splicing_hours = prod_df[splicing_hours_column].sum()
+            total_production_pay = total_splicing_hours * pay_rate
+
+            pay_col1, pay_col2 = st.columns(2)
+            pay_col1.metric("Total Splicing Hours", f"{total_splicing_hours:,.2f}")
+            pay_col2.metric("Total Production Pay", f"${total_production_pay:,.2f}")
+            
+            # --- Breakdown Table and Chart ---
+            if all([project_column in prod_df.columns, technician_column in prod_df.columns]):
+                st.subheader("Production Breakdown")
+                summary_df = prod_df.groupby([project_column, technician_column])[splicing_hours_column].sum().reset_index()
+                summary_df.rename(columns={splicing_hours_column: 'Total Splicing Hours'}, inplace=True)
+                summary_df['Total Production Pay ($)'] = summary_df['Total Splicing Hours'] * pay_rate
+                summary_df['Total Splicing Hours'] = summary_df['Total Splicing Hours'].map('{:,.2f}'.format)
+                summary_df['Total Production Pay ($)'] = summary_df['Total Production Pay ($)'].map('${:,.2f}'.format)
+                
+                # Display table and chart side-by-side
+                viz_col1, viz_col2 = st.columns(2)
+                with viz_col1:
+                    st.dataframe(summary_df)
+
+                with viz_col2:
+                    # Use unformatted data for charting
+                    chart_df = prod_df.groupby([project_column, technician_column])[splicing_hours_column].sum().reset_index()
+                    chart_df['Production Pay'] = chart_df[splicing_hours_column] * pay_rate
+
+                    fig_prod = px.bar(
+                        chart_df,
+                        x=project_column,
+                        y='Production Pay',
+                        color=technician_column,
+                        title='Production Pay by Project & Technician',
+                        barmode='group'
+                    )
+                    st.plotly_chart(fig_prod, use_container_width=True)
+            else:
+                st.info(f"Ensure your form has '{project_column}' and '{technician_column}' fields for a detailed breakdown.")
+        else:
+            st.warning(f"Could not find a '{splicing_hours_column}' field in your form. Production analysis cannot be performed.")
+
+
+        st.markdown("<hr>", unsafe_allow_html=True)
+
         # --- Visualizations ---
-        st.header("Visual Insights")
+        st.header("General Visual Insights")
         
         # 1. Submissions Over Time
         st.subheader("Submissions Trend")
