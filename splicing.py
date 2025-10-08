@@ -90,7 +90,6 @@ def main():
     Main function to run the Streamlit app.
     """
     st.title("📊 Jotform KPI Dashboard")
-    st.markdown("This dashboard visualizes submissions from the specified Jotform form.")
 
     # --- Field Name Configuration ---
     # IMPORTANT: Adjust these variable values if your Jotform field names are different.
@@ -174,25 +173,6 @@ def main():
         if filtered_df.empty:
             st.warning("No data matches the current filter settings.")
             return
-
-        # Top-level KPIs
-        st.header("Overall Metrics")
-        total_submissions = filtered_df.shape[0]
-        
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Total Submissions (filtered)", f"{total_submissions}")
-        
-        if 'Rating' in filtered_df.columns:
-            filtered_df['Rating_numeric'] = pd.to_numeric(filtered_df['Rating'], errors='coerce')
-            avg_rating = filtered_df['Rating_numeric'].mean()
-            col2.metric("Average Rating", f"{avg_rating:.2f}" if pd.notna(avg_rating) else "N/A")
-        else:
-             col2.info("Add a 'Rating' field to your form to see an average rating KPI.")
-        
-        latest_submission_date = filtered_df['created_at'].max().strftime("%Y-%m-%d %H:%M")
-        col3.metric("Latest Submission", latest_submission_date)
-
-        st.markdown("<hr>", unsafe_allow_html=True)
 
         # --- Splicing Hours & Pay Calculation ---
         st.header("Splicing & Production Analysis")
