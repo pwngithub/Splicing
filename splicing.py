@@ -23,20 +23,34 @@ st.set_page_config(
 
 def get_jotform_submissions(api_key, form_id):
     """
-    Fetches all submissions for a given Jotform form ID using the API.
+    Fetches all submissions for a given Jotform form ID using the API, handling pagination.
     """
-    url = f"https://api.jotform.com/form/{form_id}/submissions?apiKey={api_key}"
-    try:
-        response = requests.get(url)
-        response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
-        data = response.json()
-        return data.get('content', [])
-    except requests.exceptions.RequestException as e:
-        st.error(f"Error fetching data from Jotform API: {e}")
-        return None
-    except ValueError:
-        st.error("Error decoding JSON response from Jotform API. The response may not be valid.")
-        return None
+    all_submissions = []
+    limit = 1000  # Max limit per request
+    offset = 0
+    
+    while True:
+        url = f"https://api.jotform.com/form/{form_id}/submissions?apiKey={api_key}&offset={offset}&limit={limit}"
+        try:
+            response = requests.get(url)
+            response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+            data = response.json()
+            submissions = data.get('content', [])
+            all_submissions.extend(submissions)
+
+            # If the number of returned submissions is less than the limit, we've reached the end
+            if len(submissions) < limit:
+                break
+            
+            # Otherwise, increase the offset to get the next batch
+            offset += limit
+        except requests.exceptions.RequestException as e:
+            st.error(f"Error fetching data from Jotform API: {e}")
+            return None
+        except ValueError:
+            st.error("Error decoding JSON response from Jotform API. The response may not be valid.")
+            return None
+    return all_submissions
 
 
 def process_submissions_to_dataframe(submissions):
@@ -208,3 +222,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
