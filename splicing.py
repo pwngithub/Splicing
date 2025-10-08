@@ -21,6 +21,7 @@ st.set_page_config(
 
 # --- Helper Functions ---
 
+@st.cache_data(ttl=600) # Cache data for 10 minutes
 def get_jotform_submissions(api_key, form_id):
     """
     Fetches all submissions for a given Jotform form ID using the API, handling pagination.
@@ -29,27 +30,28 @@ def get_jotform_submissions(api_key, form_id):
     limit = 1000  # Max limit per request
     offset = 0
     
-    while True:
-        url = f"https://api.jotform.com/form/{form_id}/submissions?apiKey={api_key}&offset={offset}&limit={limit}"
-        try:
-            response = requests.get(url)
-            response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
-            data = response.json()
-            submissions = data.get('content', [])
-            all_submissions.extend(submissions)
+    with st.spinner("Fetching data from Jotform..."):
+        while True:
+            url = f"https://api.jotform.com/form/{form_id}/submissions?apiKey={api_key}&offset={offset}&limit={limit}"
+            try:
+                response = requests.get(url)
+                response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+                data = response.json()
+                submissions = data.get('content', [])
+                all_submissions.extend(submissions)
 
-            # If the number of returned submissions is less than the limit, we've reached the end
-            if len(submissions) < limit:
-                break
-            
-            # Otherwise, increase the offset to get the next batch
-            offset += limit
-        except requests.exceptions.RequestException as e:
-            st.error(f"Error fetching data from Jotform API: {e}")
-            return None
-        except ValueError:
-            st.error("Error decoding JSON response from Jotform API. The response may not be valid.")
-            return None
+                # If the number of returned submissions is less than the limit, we've reached the end
+                if len(submissions) < limit:
+                    break
+                
+                # Otherwise, increase the offset to get the next batch
+                offset += limit
+            except requests.exceptions.RequestException as e:
+                st.error(f"Error fetching data from Jotform API: {e}")
+                return None
+            except ValueError:
+                st.error("Error decoding JSON response from Jotform API. The response may not be valid.")
+                return None
     return all_submissions
 
 
@@ -101,11 +103,15 @@ def main():
             return
 
         # --- Sidebar Filters ---
-        st.sidebar.header("Filters")
+        st.sidebar.header("Dashboard Filters")
         
-        # Allow filtering by date range
-        min_date = df['submission_date'].min()
-        max_date = df['submission_date'].max()
+        # Start with the full dataframe, which will be sequentially filtered
+        filtered_df = df.copy()
+
+        # --- Filter by Date Range ---
+        st.sidebar.subheader("Filter by Date")
+        min_date = filtered_df['submission_date'].min()
+        max_date = filtered_df['submission_date'].max()
 
         if min_date and max_date and min_date != max_date:
             date_range = st.sidebar.date_input(
@@ -114,41 +120,69 @@ def main():
                 min_value=min_date,
                 max_value=max_date
             )
-            # Ensure date_range has two values before unpacking
             if len(date_range) == 2:
                 start_date, end_date = date_range
-                # Filter dataframe based on selected date range
-                mask = (df['created_at'].dt.date >= start_date) & (df['created_at'].dt.date <= end_date)
-                filtered_df = df.loc[mask]
-            else:
-                filtered_df = df.copy() # Use the full dataframe if date range is not set properly
+                mask = (filtered_df['created_at'].dt.date >= start_date) & (filtered_df['created_at'].dt.date <= end_date)
+                filtered_df = filtered_df.loc[mask]
         else:
-             st.sidebar.write("Only one submission date available. No date range filter.")
-             filtered_df = df.copy()
+             st.sidebar.write("Only one submission date available.")
+
+        # --- Filter by Project ---
+        # IMPORTANT: Change 'Project' to the actual name of your project field in Jotform.
+        st.sidebar.subheader("Filter by Project")
+        project_column = 'Project' 
+        if project_column in filtered_df.columns:
+            all_projects = sorted(filtered_df[project_column].unique())
+            selected_projects = st.sidebar.multiselect(
+                "Select Project(s)",
+                options=all_projects,
+                default=all_projects
+            )
+            if selected_projects:
+                filtered_df = filtered_df[filtered_df[project_column].isin(selected_projects)]
+        else:
+            st.sidebar.info(f"Add a '{project_column}' field to your form to enable project filtering.")
+
+        # --- Filter by Technician Name ---
+        # IMPORTANT: Change 'Technician Name' to the actual name of your technician field in Jotform.
+        st.sidebar.subheader("Filter by Technician")
+        technician_column = 'Technician Name'
+        if technician_column in filtered_df.columns:
+            all_technicians = sorted(filtered_df[technician_column].unique())
+            selected_technicians = st.sidebar.multiselect(
+                "Select Technician(s)",
+                options=all_technicians,
+                default=all_technicians
+            )
+            if selected_technicians:
+                filtered_df = filtered_df[filtered_df[technician_column].isin(selected_technicians)]
+        else:
+            st.sidebar.info(f"Add a '{technician_column}' field to your form to enable technician filtering.")
+
 
         # --- Main Dashboard ---
         
+        # Display a warning if all data has been filtered out
+        if filtered_df.empty:
+            st.warning("No data matches the current filter settings.")
+            return
+
         # Top-level KPIs
         st.header("Overall Metrics")
         total_submissions = filtered_df.shape[0]
         
         col1, col2, col3 = st.columns(3)
-        col1.metric("Total Submissions", f"{total_submissions}")
-        # Add more metrics here as needed based on your form fields
-        # For example, if you have a 'Rating' field:
+        col1.metric("Total Submissions (filtered)", f"{total_submissions}")
+        
         if 'Rating' in filtered_df.columns:
-            # Ensure rating is numeric before calculating average
             filtered_df['Rating_numeric'] = pd.to_numeric(filtered_df['Rating'], errors='coerce')
             avg_rating = filtered_df['Rating_numeric'].mean()
             col2.metric("Average Rating", f"{avg_rating:.2f}" if pd.notna(avg_rating) else "N/A")
         else:
              col2.info("Add a 'Rating' field to your form to see an average rating KPI.")
         
-        if not filtered_df.empty:
-            latest_submission_date = filtered_df['created_at'].max().strftime("%Y-%m-%d %H:%M")
-            col3.metric("Latest Submission", latest_submission_date)
-        else:
-            col3.metric("Latest Submission", "N/A")
+        latest_submission_date = filtered_df['created_at'].max().strftime("%Y-%m-%d %H:%M")
+        col3.metric("Latest Submission", latest_submission_date)
 
         st.markdown("<hr>", unsafe_allow_html=True)
 
@@ -172,8 +206,6 @@ def main():
         # 2. Dynamic charts based on form questions
         st.subheader("Response Analysis")
         
-        # Let the user select a column to analyze
-        # Exclude columns that are not useful for categorical analysis
         potential_cols_to_plot = [col for col in filtered_df.columns if col not in ['submission_id', 'created_at', 'submission_date', 'Rating_numeric']]
         
         if not potential_cols_to_plot:
@@ -188,7 +220,6 @@ def main():
         if selected_column:
             col1_viz, col2_viz = st.columns(2)
             
-            # Pie Chart for distribution
             with col1_viz:
                 counts = filtered_df[selected_column].value_counts().reset_index()
                 counts.columns = [selected_column, 'count']
@@ -202,7 +233,6 @@ def main():
                 fig_pie.update_traces(textinfo='percent+label')
                 st.plotly_chart(fig_pie, use_container_width=True)
 
-            # Bar Chart for exact numbers
             with col2_viz:
                 fig_bar = px.bar(
                     counts,
