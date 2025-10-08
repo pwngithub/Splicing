@@ -142,6 +142,58 @@ def parse_and_analyze_closures(df, column_name, project_col, tech_col):
 
     if not parsed_entries:
         st.warning("No valid 'Closures/Panels' entries could be parsed from the filtered data. Please check the format.")
+        
+        # --- Add debugging information ---
+        st.subheader("Parsing Debug Information")
+        st.write("The script could not find all the required keys in the 'Closures/Panels' data. Here is a sample of what was parsed from the first entry it found. Compare the 'Parsed Keys' with the 'Required Keys' to identify any mismatches.")
+
+        debug_info_displayed = False
+        # Find the first row with data to debug
+        for _, row in df.iterrows():
+            entries_str = row[column_name]
+            if pd.notna(entries_str) and str(entries_str).strip():
+                lines = str(entries_str).strip().split('\n')
+                if lines:
+                    first_line = lines[0]
+                    st.write("**Original Data from First Line:**")
+                    st.code(first_line)
+
+                    parts = [p.strip() for p in first_line.split(',')]
+                    entry_dict = {}
+                    for part in parts:
+                        key_value = part.split(':', 1)
+                        if len(key_value) == 2:
+                            key = key_value[0].strip()
+                            value = key_value[1].strip()
+                            entry_dict[key] = value
+                    
+                    st.write("**Parsed Dictionary:**")
+                    st.json(entry_dict)
+
+                    st.write("**Parsed Keys vs. Required Keys:**")
+                    parsed_keys = list(entry_dict.keys())
+                    required_keys = ['Closure Type', 'Closure Name', 'Splice Type', 'Splice Count', 'Fiber Type', 'Max Cable Size']
+                    
+                    # Create a comparison DataFrame
+                    comparison_data = []
+                    all_keys = sorted(list(set(required_keys + parsed_keys)))
+                    for key in all_keys:
+                        comparison_data.append({
+                            "Key Name": key,
+                            "Is Required": key in required_keys,
+                            "Was Found": key in parsed_keys
+                        })
+                    
+                    comparison_df = pd.DataFrame(comparison_data)
+                    st.table(comparison_df)
+
+                    debug_info_displayed = True
+                    break # Only show debug info for the very first entry
+        
+        if not debug_info_displayed:
+            st.write("Could not find any data in the 'Closures/Panels' column to debug.")
+        # --- End of debugging information ---
+        
         return
 
     closures_df = pd.DataFrame(parsed_entries)
@@ -232,7 +284,7 @@ def main():
                 max_value=max_date
             )
             if len(date_range) == 2:
-                start_date, end_date = date_range
+                start_date, end_date = range
                 mask = (filtered_df['created_at'].dt.date >= start_date) & (filtered_df['created_at'].dt.date <= end_date)
                 filtered_df = filtered_df.loc[mask]
         else:
