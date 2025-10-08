@@ -284,7 +284,7 @@ def main():
                 max_value=max_date
             )
             if len(date_range) == 2:
-                start_date, end_date = range
+                start_date, end_date = date_range
                 mask = (filtered_df['created_at'].dt.date >= start_date) & (filtered_df['created_at'].dt.date <= end_date)
                 filtered_df = filtered_df.loc[mask]
         else:
