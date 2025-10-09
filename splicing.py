@@ -1,15 +1,22 @@
 import streamlit as st
 import pandas as pd
+import requests
+from io import StringIO
 
 # ------------------------------------------------
-# CONFIGURATION - Replace this link with YOUR published CSV link
+# CONFIGURATION - Using Google’s gviz CSV export link
 # ------------------------------------------------
-PUBLISHED_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vXXXXXXXXXXXX/pub?output=csv"
+SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/1iiBe4CLYPlr_kpIOuvzxLliwA0ferGtBRhtnMLfhOQg/gviz/tq?tqx=out:csv"
 
 def load_google_sheet(url):
-    """Fetch Google Sheet published as CSV and return as DataFrame."""
+    """Fetch Google Sheet as DataFrame via gviz CSV export."""
     try:
-        df = pd.read_csv(url)
+        resp = requests.get(url)
+        if resp.status_code != 200:
+            st.error(f"Failed to load sheet. HTTP {resp.status_code}")
+            st.stop()
+        csv_data = StringIO(resp.text)
+        df = pd.read_csv(csv_data)
         return df
     except Exception as e:
         st.error(f"Error loading Google Sheet: {e}")
@@ -21,11 +28,11 @@ def main():
 
     # Load data
     with st.spinner("Loading Google Sheet..."):
-        df = load_google_sheet(PUBLISHED_CSV_URL)
+        df = load_google_sheet(SHEET_CSV_URL)
 
     st.success("Data loaded successfully!")
 
-    # Show full data
+    # Show data
     st.subheader("📋 Full Data Table")
     st.dataframe(df, use_container_width=True)
 
